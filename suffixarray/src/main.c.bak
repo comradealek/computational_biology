@@ -1,0 +1,219 @@
+#include <stdlib.h>
+#include <stdio.h>
+#include <stdint.h>
+#include <string.h>
+
+uint32_t * suffixArray(char *, size_t);
+
+int main(int argc, char ** argv) {
+  if (argc != 2) {
+    fprintf(stdout, "malformed arguments\n");
+    return 1;
+  }
+  
+  char * s = NULL;   // the S string, and the pointer to the entire char buffer
+  FILE * pFile = fopen(argv[1], "r"); // pointer to the given file
+  if (pFile == NULL) {
+    fprintf(stderr, "error reading file at %s\n", argv[1]);
+    return 1;
+  }
+
+  fseek(pFile, 0L, SEEK_END);
+  size_t fsize = ftell(pFile); // the size of the file
+  fseek(pFile, 0L, SEEK_SET);
+
+  // We will now read the file into the text string
+  s = malloc(fsize);
+  char * next = s; // pointer to the next position in the string to read the file line into
+
+  while (!feof(pFile)) {
+    // the upper bound to read characters into the text string
+    size_t n = fsize - (next - s);
+
+    // read the next file line into the text string at 'next'
+    getline(&next, &n, pFile);
+
+    // find the next instance of \n, \r, >, or ';', and set that to next
+    // This will have the effect of overwriting the string starting at any
+    // of these characters. This will erase comments, and will remove the
+    // carriage returns or newline characters.
+    next = strpbrk(next, "\n\r>;");
+  }
+
+  // sets the final newline/carriage return to 0 if it exists.
+  if (next) {
+    next[0] = '$';
+    next[1] = 0;
+  }
+  else {
+    fprintf(stdout, "malformed file at %s\n", argv[1]);
+    free(s);
+    fclose(pFile);
+    return 1;
+  }
+  size_t n = strlen(s);
+  fclose(pFile);
+#ifdef DEBUG
+  fprintf(stdout, "%llu\n", n);
+  fprintf(stdout, "%s\n", s);
+#endif
+  uint32_t * SA = suffixArray(s, n);
+  
+  if (SA) {
+    for (uint32_t i = 0; i < n; i++) {
+      fprintf(stdout, "SA[%llu] = %llu\n", i, SA[i]);
+    }
+  }
+
+  if (SA) free(SA);
+}
+
+bool LMScmp(char * s, size_t n, uint8_t * map, uint8_t * LMS, size_t offset1, size_t offset2) {
+  if (s[offset1] != s[offset2]) {
+    return false;
+  }
+  size_t i = 1;
+  while (true) {
+    if (LMS[offset1 + i] && LMS[offset2 + i]) {
+      return true;
+    } else if (LMS[offset1 + i] || LMS[offset2 + i]) {
+      return false;
+    }
+    if (s[offset1 + i] != s[offset2 + i]) {
+      return false;
+    }
+    i++;
+  }
+}
+
+uint32_t * suffixArray(char * s, size_t n) {
+  uint8_t map[n];
+  uint8_t LMS[n];
+  map[n - 1] = 0;
+  map[n - 2] = 1;
+  LMS[n - 1] = 1;
+  LMS[n - 2] = 0;
+
+  char minc = s[n - 1]; // the $ character
+  char maxc = s[n - 2]; // the character just before the $
+  
+  // Collect facts about the string array
+  for (size_t i = n - 3; i < n /* loop until it underflows */; i--) {
+    LMS[i] = 0;
+    if (s[i] > s[i+1] || (s[i] == s[i+1] && map[i+1] == 1) ) {
+      map[i] = 1;
+      if (map[i + 1] == 0) {
+        LMS[i + 1] = 1;
+      }
+    }
+    else map[i] = 0;
+    if (s[i] < minc) minc = s[i];
+    if (s[i] > maxc) maxc = s[i];
+  }
+
+#ifdef DEBUG
+  for (size_t i = 0; i < n; i++) {
+    fprintf(stdout, "%c",  map[i]? 'L': 'S');
+  }
+  fprintf(stdout, "\n");
+  for (size_t i = 0; i < n; i++) {
+    fprintf(stdout, "%c",  LMS[i]? '^': ' ');
+  }
+  fprintf(stdout, "\n");
+#endif
+
+  //get the string range
+  char range = maxc - minc + 1;
+#ifdef DEBUG
+  fprintf(stdout, "%d %d %d\n", minc, maxc, range);
+#endif
+
+  // get the bucket data
+  uint32_t bucketlens [range];
+  memset(bucketlens, 0, sizeof(uint32_t) * range);
+  for (size_t i = 0; i < n; i++) {
+    bucketlens[s[i] - minc] += 1;
+  }
+  uint32_t bucketheads [range];
+  uint32_t buckettails [range];
+  size_t k = 0;
+  for (char i = 0; i < range; i++) {
+    bucketheads[i] = k;
+    k += bucketlens[i];
+    buckettails[i] = k - 1;
+  }
+  
+  // bucket sort the lms suffixes
+  size_t firstGuess [n];
+  memset(firstGuess, (size_t) -1, sizeof(size_t) * n);
+  for (size_t i = 0; i < n; i++) {
+    // skip non-lms
+    if (!LMS[i]) continue;
+    char bucketIndex = s[i] - minc;
+    firstGuess[buckettails[bucketIndex]] = i;
+    buckettails[bucketIndex] -= 1;
+  }
+
+#ifdef DEBUG
+  fprintf(stdout, "\n");
+  for (size_t i = 0; i < n; i++) {
+    fprintf(stdout, "% 2llu ", firstGuess[i]);
+  }
+  fprintf(stdout, "\n");
+#endif
+
+  for (size_t i = 0; i < n; i++) {
+    if (firstGuess[i] == (size_t) -1) continue;
+    if (firstGuess[i] == 0) continue;
+    size_t j = firstGuess[i] - 1;
+    if (map[j] != 1) continue;
+    char bucketIndex = s[j] - minc;
+    firstGuess[bucketheads[bucketIndex]] = j;
+    bucketheads[bucketIndex] += 1;
+  }
+
+#ifdef DEBUG
+  fprintf(stdout, "\n");
+  for (size_t i = 0; i < n; i++) {
+    fprintf(stdout, "% 2llu ", firstGuess[i]);
+  }
+  fprintf(stdout, "\n");
+#endif
+ 
+  k = 0;
+  for (char i = 0; i < range; i++) {
+    bucketheads[i] = k;
+    k += bucketlens[i];
+    buckettails[i] = k - 1;
+  }
+
+  for (size_t i = n - 1; i < n /* underflow again */; i--) {
+    if (firstGuess[i] == 0) continue;
+    size_t j = firstGuess[i] - 1;
+    if (map[j] != 0) continue;
+    char bucketIndex = s[j] - minc;
+    firstGuess[buckettails[bucketIndex]] = j;
+    buckettails[bucketIndex] -= 1;
+  }
+
+#ifdef DEBUG
+  for (size_t i = 0; i < range; i++) {
+    fprintf(stdout, "% 2llu ", bucketlens[i]);
+  }
+  fprintf(stdout, "\n");
+  for (size_t i = 0; i < range; i++) {
+    fprintf(stdout, "% 2llu ", bucketheads[i]);
+  }
+  fprintf(stdout, "\n");
+  for (size_t i = 0; i < range; i++) {
+    fprintf(stdout, "% 2llu ", buckettails[i]);
+  }
+  fprintf(stdout, "\n");
+  for (size_t i = 0; i < n; i++) {
+    fprintf(stdout, "% 2llu ", firstGuess[i]);
+  }
+  fprintf(stdout, "\n");
+#endif
+  
+  return NULL;
+}
