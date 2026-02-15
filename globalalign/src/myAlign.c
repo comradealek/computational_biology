@@ -9,8 +9,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-//#define DEBUG
-
 void globalAlignment(char *, char *, int, int, int, char **);
 
 #define SEEN    0x8

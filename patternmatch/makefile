@@ -1,15 +1,17 @@
 src := $(shell echo src/*.c)
-src2 := $(shell echo src2/*.c)
 
 objs := $(src:src/%.c=obj/%.o)
-objs2 := $(src2:src2/%.c=obj2/%.o)
+objs_d := $(src:src/%.c=obj/%.do)
 
-out := bin/main
-out2 := bin2/main
+#set this to the desired executable name
+exemain := zalg
+
+out := bin/$(exemain)
 
 libs := -ldl -lm
 includes := -Iinclude
-cflags := -O3 -g
+debugflags := -g -DDEBUG
+cflags := -O3
 
 main : $(out)
 
@@ -19,13 +21,13 @@ $(out) : $(objs)
 obj/%.o : src/%.c
 	gcc -c $< -o $@ $(libs) $(includes) $(cflags)
 
-main2 : $(out2)
+debug : $(out)_debug
 
-$(out2) : $(objs2)
-	gcc -o $(out2) $(objs2) $(libs) $(includes) $(cflags)
+$(out)_debug : $(objs_d)
+	gcc -o $(out)_debug $(objs_d) $(libs) $(includes) $(debugflags)
 
-obj2/%.o : src2/%.c
-	gcc -c $< -o $@ $(libs) $(includes) $(cflags)
+obj/%.do : src/%.c
+	gcc -c $< -o $@ $(libs) $(includes) $(debugflags)
 
 clean : 
-	rm $(objs) bin/main
+	rm obj/* bin/*

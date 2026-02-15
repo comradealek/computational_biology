@@ -30,4 +30,4 @@ obj/%.do : src/%.c
 	gcc -c $< -o $@ $(libs) $(includes) $(debugflags)
 
 clean : 
-	rm $(objs) $(objs_d) bin/$(exemain) bin/$(exemain)_debug
+	rm obj/* bin/*
